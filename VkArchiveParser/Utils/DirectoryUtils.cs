@@ -1,0 +1,28 @@
+﻿using AngleSharp.Html.Dom;
+using AngleSharp.Html.Parser;
+
+namespace VkArchiveParser.Utils
+{
+    public static class DirectoryUtils
+    {
+        public static IEnumerable<string> GetDirectories(string path)
+        {
+            foreach (var p in Directory.GetDirectories(path))
+                yield return p.Remove(0, path.Length).Trim(Path.DirectorySeparatorChar);
+        }
+
+        public static IEnumerable<string> GetFiles(string path)
+        {
+            foreach (var p in Directory.GetFiles(path))
+                yield return p.Remove(0, path.Length).Trim(Path.DirectorySeparatorChar);
+        }
+
+        public static IHtmlDocument ParseHtml(this string file)
+        {
+            var s = new FileStream(file, FileMode.Open);
+            var doc = new HtmlParser().ParseDocument(s);
+            s.Close();
+            return doc;
+        }
+    }
+}
