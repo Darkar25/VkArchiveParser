@@ -6,7 +6,6 @@ using VkArchiveParser.Utils;
 
 namespace VkArchiveParser.Messages
 {
-    [Export(typeof(ICategoryProvider))]
     public class MessagesCategoryProvider : ICategoryProvider
     {
         public ICategory LoadCategory(string path, VkArchive archive) => new MessagesCategory(path, archive);
@@ -17,7 +16,7 @@ namespace VkArchiveParser.Messages
             {
                 var a = Path.GetFileName(path);
                 var b = Directory.EnumerateDirectories(path).Select(x => Path.GetFileName(x));
-                if (Directory.GetFiles(path, "index-*.html").First().ParseHtml().GetElementsByClassName("ui_crumb").Last().TextContent.Contains("Сообщения") &&
+                if (Directory.GetFiles(path, "index-*.html").First().PathHtml().GetElementsByClassName("ui_crumb").Last().TextContent.Contains("Сообщения") &&
                     b.All(x => int.TryParse(x, out _))) {
                     return true;
                 }

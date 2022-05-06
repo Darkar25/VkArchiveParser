@@ -1,4 +1,5 @@
-﻿using AngleSharp.Html.Dom;
+﻿using AngleSharp;
+using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 
 namespace VkArchiveParser.Utils
@@ -17,12 +18,31 @@ namespace VkArchiveParser.Utils
                 yield return p.Remove(0, path.Length).Trim(Path.DirectorySeparatorChar);
         }
 
-        public static IHtmlDocument ParseHtml(this string file)
+        public static IHtmlDocument PathHtml(this string file)
         {
             var s = new FileStream(file, FileMode.Open);
-            var doc = new HtmlParser().ParseDocument(s);
+            var doc = new HtmlParser(new()
+            {
+                IsScripting = false,
+                IsNotConsumingCharacterReferences = true,
+                IsNotSupportingFrames = true,
+                IsSupportingProcessingInstructions = false,
+                IsKeepingSourceReferences = false
+            }, BrowsingContext.New(Configuration.Default)).ParseDocument(s);
             s.Close();
             return doc;
+        }
+
+        public static IHtmlDocument StringHtml(this string content)
+        {
+            return new HtmlParser(new()
+            {
+                IsScripting = false,
+                IsNotConsumingCharacterReferences = true,
+                IsNotSupportingFrames = true,
+                IsSupportingProcessingInstructions = false,
+                IsKeepingSourceReferences = false
+            }, BrowsingContext.New(Configuration.Default)).ParseDocument(content);
         }
     }
 }

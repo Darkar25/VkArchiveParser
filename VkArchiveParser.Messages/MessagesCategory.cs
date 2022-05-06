@@ -1,10 +1,12 @@
-﻿using AngleSharp.Dom;
+﻿using AngleSharp;
+using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Html.Parser;
 using CsvHelper;
 using EasyJSON;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using VkArchiveParser.Categories;
@@ -34,59 +36,54 @@ namespace VkArchiveParser.Messages
         public override string DisplayName => "Сообщения";
         public override string CodeName => "messages";
         public override int Count => _count ??= Directory.EnumerateDirectories(InputPath).Sum(x => Directory.GetFiles(x).Length);
-        public static int UrlToId(string url)
+        public static int? UrlToId(string? url)
         {
+            if (string.IsNullOrEmpty(url)) return null;
             var str = url[url.LastIndexOf("/")..];
             if (str.Contains("public") || str.Contains("club")) return -int.Parse(Regex.Match(str, @"\d+").Groups[0].Value);
             return int.Parse(Regex.Match(str, @"\d+").Groups[0].Value);
         }
-        public JSONObject GetCurrentUser()
+        public override void PopulateCurrentUserInfo()
         {
-            JSONObject ret = new();
-            var dirs = DirectoryUtils.GetDirectories(InputPath);
-            if (!dirs.Any()) return ret;
-            var tmp = Path.Combine(InputPath, dirs.First());
-            var doc = Path.Combine(tmp, DirectoryUtils.GetFiles(tmp).First()).ParseHtml();
-            var jd = doc.GetElementsByName("jd")[0] as IHtmlMetaElement;
-            var b64 = Encoding.UTF8.GetString(Convert.FromBase64String(StringUtils.Base64FixPadding(jd.Content)));
-            var b64j = JSON.Parse(b64);
-            var currentUserId = b64j["user_id"].AsInt;
-            ret["id"] = currentUserId;
-            ret["first_name"] = "Вы";
-            ret["last_name"] = "";
-            if (dirs.Contains(currentUserId.ToString()))
+            base.PopulateCurrentUserInfo();
+            if (Parent.CurrentUser["first_name"].Tag == JSONNodeType.None || Parent.CurrentUser["last_name"].Tag == JSONNodeType.None)
             {
-                tmp = Path.Combine(InputPath, currentUserId.ToString());
-                var tmp3 = Path.Combine(tmp, DirectoryUtils.GetFiles(tmp).First()).ParseHtml();
-                var tmp2 = tmp3.GetElementsByClassName("ui_crumb").Last().TextContent.Split(' ');
-                ret["first_name"] = tmp2[0];
-                ret["last_name"] = tmp2[1];
-            } else
-                foreach(var d in dirs)
-                    foreach(var f in DirectoryUtils.GetFiles(Path.Combine(InputPath, d)))
-                    {
-                        var doc2 = Path.Combine(tmp, DirectoryUtils.GetFiles(tmp).First()).ParseHtml();
-                        var tmp3 = doc2.QuerySelector<IHtmlAnchorElement>($"a.im_srv_lnk[href='https://vk.com/id{currentUserId}']");
-                        if (tmp3 is not null)
+                Parent.CurrentUser["first_name"] = "Вы";
+                Parent.CurrentUser["last_name"] = "";
+                var dirs = DirectoryUtils.GetDirectories(InputPath);
+                if (dirs.Contains(Parent.CurrentUser["id"].Value))
+                {
+                    var tmp = Path.Combine(InputPath, Parent.CurrentUser["id"].Value);
+                    var tmp3 = Directory.GetFiles(tmp).First().PathHtml();
+                    var tmp2 = tmp3.GetElementsByClassName("ui_crumb").Last().TextContent.Split(' ');
+                    Parent.CurrentUser["first_name"] = tmp2[0];
+                    Parent.CurrentUser["last_name"] = tmp2[1];
+                }
+                else
+                    foreach (var d in dirs)
+                        foreach (var f in DirectoryUtils.GetFiles(Path.Combine(InputPath, d)))
                         {
-                            var tmp4 = tmp3.TextContent.Split(' ');
-                            ret["first_name"] = tmp4[0];
-                            ret["last_name"] = tmp4[1];
-                            goto ret;
+                            var doc2 = f.PathHtml();
+                            var tmp3 = doc2.QuerySelector<IHtmlAnchorElement>($"a.im_srv_lnk[href='https://vk.com/id{Parent.CurrentUser["id"]}']");
+                            if (tmp3 is not null)
+                            {
+                                var tmp4 = tmp3.TextContent.Split(' ');
+                                Parent.CurrentUser["first_name"] = tmp4[0];
+                                Parent.CurrentUser["last_name"] = tmp4[1];
+                                return;
+                            }
                         }
-                    }
-            ret:
-            return ret;
+            }
         }
 
-        // Output columns: Id,PeerId,FromId,Out,UpdateTime,Date,Action,ActionStyle,ActionMId,ActionText,Deleted,Text
+        // Output columns: Id,PeerId,FromId,FirstName,LastName,Out,UpdateTime,Date,Action,ActionStyle,ActionMId,ActionText,Deleted,Text
         public override void ConvertToCSV(bool merged = false)
         {
             var count = 0;
             foreach (var d in DirectoryUtils.GetDirectories(InputPath))
             {
                 var peerId = int.Parse(d);
-                string outputPath = Path.Combine(Parent.ParsedPath, "messages", peerId + "");
+                string outputPath = Path.Combine(Parent.ParsedPath, Folder, peerId + "");
                 Directory.CreateDirectory(outputPath);
                 CsvWriter writer = null;
                 if(merged)
@@ -95,6 +92,8 @@ namespace VkArchiveParser.Messages
                     writer.WriteField("Id");
                     writer.WriteField("PeerId");
                     writer.WriteField("FromId");
+                    writer.WriteField("FirstName");
+                    writer.WriteField("LastName");
                     writer.WriteField("Out");
                     writer.WriteField("UpdateTime");
                     writer.WriteField("Date");
@@ -114,6 +113,8 @@ namespace VkArchiveParser.Messages
                         writer.WriteField("Id");
                         writer.WriteField("PeerId");
                         writer.WriteField("FromId");
+                        writer.WriteField("FirstName");
+                        writer.WriteField("LastName");
                         writer.WriteField("Out");
                         writer.WriteField("UpdateTime");
                         writer.WriteField("Date");
@@ -125,11 +126,7 @@ namespace VkArchiveParser.Messages
                         writer.WriteField("Text");
                         writer.NextRecord();
                     }
-                    var doc = Path.Combine(InputPath, d, f).ParseHtml();
-                    var jd = doc.GetElementsByName("jd")[0] as IHtmlMetaElement;
-                    var b64 = Encoding.UTF8.GetString(Convert.FromBase64String(StringUtils.Base64FixPadding(jd.Content)));
-                    var b64j = JSON.Parse(b64);
-                    var currentUserId = b64j["user_id"].AsInt;
+                    var doc = Path.Combine(InputPath, d, f).PathHtml();
                     var messages = doc.GetElementsByClassName("message").OrderBy(x => int.Parse(x.GetAttribute("data-id")));
                     foreach (var m in messages)
                     {
@@ -142,11 +139,24 @@ namespace VkArchiveParser.Messages
                             var lnk = links.OfType<IHtmlAnchorElement>().First();
                             var fromId = UrlToId(lnk.Href);
                             writer.WriteField(fromId); //FromId
+                            if (fromId > 0)
+                            {
+                                var parts = lnk.Text.Split(" ");
+                                writer.WriteField(parts[0], true); //FirstName
+                                writer.WriteField(parts.Length > 1 ? parts[1] : "", true); //LastName
+                            }
+                            else
+                            {
+                                writer.WriteField(lnk.Text, true); //FirstName
+                                writer.WriteField(""); //LastName
+                            }
                             writer.WriteField(0); //Out
                         }
                         else
                         {
-                            writer.WriteField(currentUserId); //FromId
+                            writer.WriteField(Parent.CurrentUser["id"]); //FromId
+                            writer.WriteField(Parent.CurrentUser["first_name"], true); //FirstName
+                            writer.WriteField(Parent.CurrentUser["last_name"], true); //LastName
                             writer.WriteField(1); //Out
                         }
                         var edited = header.GetElementsByClassName("message-edited");
@@ -290,20 +300,388 @@ namespace VkArchiveParser.Messages
 
         public override void ConvertToHTML(bool merged = false)
         {
-            // TODO: Make the HTML converter...
             // well, yes this is the same format as the original archive, but original archive lacks semantics and fancy stuff :3
-            base.ConvertToHTML(merged);
+            var count = 0;
+            var files = DirectoryUtils.GetDirectories(InputPath).ToDictionary(x => int.Parse(x), x => DirectoryUtils.GetFiles(Path.Combine(InputPath, x)).OrderBy(x => int.Parse(Regex.Match(x, @"messages(\d+).html").Groups[1].Value)).ToArray());
+            var firstMessage = files.Keys.ToDictionary(x => x, x =>
+            {
+                var a = files[x].Last();
+                //Since we need only one single field from the entire document we don`t need to pass the entire thing through HTML parser
+                return new JSONObject() {
+                    ["href"] = a + "#" + Regex.Match(File.ReadAllText(Path.Combine(InputPath, x + "", a)), @"data-id=""(\d +)""", RegexOptions.RightToLeft).Groups[1].Value
+                };
+            });
+            var lastMessage = files.Keys.ToDictionary(x => x, x =>
+            {
+                var a = files[x].First();
+                var msg = Path.Combine(InputPath, x+"", a).PathHtml().GetElementsByClassName("message");
+                var ms = msg[0];
+                var header = ms.GetElementsByClassName("message__header")[0];
+                header.QuerySelector(".message-edited")?.Remove();
+                var u = new JSONArray();
+                foreach (var i in msg.Select(x => UrlToId(x.QuerySelector<IHtmlAnchorElement>(".message__header a")?.Href) ?? Parent.CurrentUser["id"].AsInt).Append(Parent.CurrentUser["id"].AsInt).Distinct())
+                    u.Add(i);
+                return new JSONObject()
+                {
+                    ["href"] = a + "#" + ms.GetAttribute("data-id"),
+                    ["text"] = ms.LastElementChild.TextContent,
+                    ["hasAttachment"] = ms.LastElementChild.GetElementsByClassName("kludges").Any(),
+                    ["sender"] = UrlToId(header.QuerySelector<IHtmlAnchorElement>("a")?.Href) ?? Parent.CurrentUser["id"].AsInt,
+                    ["users"] = u,
+                    ["date"] = ((DateTimeOffset)DateTime.ParseExact(header.TextContent[(header.TextContent.LastIndexOf(",") + 1)..].Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture)).ToUnixTimeSeconds()
+                };
+            });
+            var templatePeerList = Properties.Resources.template_index_messages.StringHtml();
+            (templatePeerList.GetElementsByName("user_id").First() as IHtmlMetaElement).Content = Parent.CurrentUser["id"];
+            var peerList = templatePeerList.QuerySelector<IHtmlUnorderedListElement>("ul");
+            foreach (var p in lastMessage.OrderByDescending(x => (long)x.Value["date"]))
+            {
+                var peer = templatePeerList.CreateElement<IHtmlListItemElement>();
+                var a = templatePeerList.CreateElement<IHtmlAnchorElement>();
+                a.Id = "peer";
+                a.Href = Path.Combine(p.Key+"", p.Value["href"]);
+                a.SetAttribute("data-peer_id", p.Key+"");
+                var ic = templatePeerList.CreateElement<IHtmlDivElement>();
+                ic.ClassName = "im_peer_icon rowspan2 " + (p.Key > 2000000000 ? (p.Value["users"].AsArray.Count switch {
+                    2 => "chat_2",
+                    3 => "chat_3",
+                    _ => "chat_4",
+                }) : "");
+                ic.SetAttribute("style", p.Key > 2000000000 ? string.Join(";", p.Value["users"].AsArray.Linq.Take(4).Select((x, i) => "--user-id" + (i + 1) + ": " + x.Value.AsInt)) : ("--user-id1: " + p.Key));
+                var strong = templatePeerList.CreateElement("strong");
+                strong.Id = "peer_title";
+                strong.TextContent = Path.Combine(InputPath, p.Key+"", files[p.Key].First()).PathHtml().GetElementsByClassName("ui_crumb").Last().TextContent;
+                var time = templatePeerList.CreateElement<IHtmlTimeElement>();
+                var dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc).AddSeconds((long)p.Value["date"]).ToLocalTime();
+                time.DateTime = dt.ToString("yyyy-MM-dd HH:mm:ss");
+                time.TextContent = dt.ToString("dd MMM yyyy", VkArchive.DateCulture);
+                var message = templatePeerList.CreateElement<IHtmlDivElement>();
+                message.ClassName = "im_peer_message";
+                message.SetAttribute("data-id", p.Value["href"].Value.Split('#')[1]);
+                message.SetAttribute("data-user_id", p.Value["sender"].Value);
+                if (p.Value["sender"].AsInt != p.Key) {
+                    var message_icon = templatePeerList.CreateElement<IHtmlDivElement>();
+                    message_icon.ClassName = "im_peer_icon im_peer_message_icon";
+                    message_icon.SetAttribute("style", "--user-id1: " + p.Value["sender"].Value);
+                    message.AppendChild(message_icon);
+                }
+                var text = templatePeerList.CreateElement<IHtmlSpanElement>();
+                text.ClassName = "im_message_text";
+                text.TextContent = p.Value["text"].Value;
+                message.AppendChild(text);
+                a.Append(ic , strong, time, message);
+                peer.Append(a);
+                peerList.AppendChild(peer);
+                var template = Properties.Resources.template_messages.StringHtml();
+                var index = 0;
+                string[] pages = new string[files[p.Key].Length];
+                var e = files[p.Key].GetEnumerator();
+                DateOnly currentDayGroup = new();
+                var currentSender = 0;
+                IHtmlDivElement currentDayGroupElement = null;
+                IHtmlDivElement currentMessageGroupElement = null;
+                foreach (var f in files[p.Key])
+                {
+                    if (!merged)
+                    {
+                        template = Properties.Resources.template_messages.StringHtml();
+                        currentDayGroup = new();
+                        currentSender = 0;
+                        currentDayGroupElement = null;
+                        currentMessageGroupElement = null;
+                    }
+                    template.QuerySelector<IHtmlMetaElement>("meta[name=user_id]").Content = Parent.CurrentUser["id"];
+                    template.QuerySelector<IHtmlMetaElement>("meta[name=peer_id]").Content = p.Key+"";
+                    var pic = template.QuerySelector<IHtmlDivElement>("#peer_icon");
+                    pic.ClassName = ic.ClassName;
+                    pic.SetAttribute("style", ic.GetAttribute("style"));
+                    template.QuerySelector("#peer_title").TextContent = strong.TextContent;
+                    template.QuerySelector<IHtmlAnchorElement>("#totop_button").Href = firstMessage[p.Key]["href"];
+                    template.QuerySelector<IHtmlAnchorElement>("#tobottom_button").Href = p.Value["href"];
+                    if (!merged)
+                    {
+                        var nav = template.GetElementsByTagName("nav")[0];
+                        var pg = (0..(files[p.Key].Length - 1)).GetPagination(index);
+                        foreach (var page in pg)
+                        {
+                            var pag = template.CreateElement<IHtmlAnchorElement>();
+                            pag.Href = pages[page] ??= (files[p.Key][page] + "#" + Path.Combine(InputPath, p.Key + "", files[p.Key][page]).PathHtml().QuerySelector(".message").GetAttribute("data-id"));
+                            pag.TextContent = page + 1 + "";
+                            if (page == index) pag.ClassName = "active";
+                            nav.AppendChild(pag);
+                        }
+                    }
+                    var doc = Path.Combine(InputPath, p.Key + "", f).PathHtml();
+                    var messages = doc.GetElementsByClassName("message").OrderBy(x => int.Parse(x.GetAttribute("data-id")));
+                    foreach (var m in messages)
+                    {
+                        var node = template.CreateElement<IHtmlListItemElement>();
+                        node.Id = m.GetAttribute("data-id");
+                        var header = m.GetElementsByClassName("message__header")[0];
+                        var edited = header.GetElementsByClassName("message-edited");
+                        if (edited.Length > 0)
+                        {
+                            var edit = template.CreateElement<IHtmlTimeElement>();
+                            var edittime = DateTime.ParseExact(edited.OfType<IHtmlSpanElement>().First().Title.Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture);
+                            edit.DateTime = edittime.ToString("yyyy-MM-dd HH:mm:ss");
+                            edit.TextContent = "(ред.)";
+                            edit.Title = edittime.ToString("Изменено dd MMM yyyy в HH:mm:ss", VkArchive.DateCulture);
+                            node.AppendChild(edit);
+                            edited[0].Remove();
+                        }
+                        var date = DateTime.ParseExact(header.TextContent[(header.TextContent.LastIndexOf(",") + 1)..].Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture);
+                        var links = header.GetElementsByTagName("a");
+                        if (DateOnly.FromDateTime(date) != currentDayGroup)
+                        {
+                            currentDayGroup = DateOnly.FromDateTime(date);
+                            if (currentDayGroupElement is not null)
+                                template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                            currentDayGroupElement = template.CreateElement<IHtmlDivElement>();
+                            currentDayGroupElement.ClassName = "im_day_group";
+                            var timee = template.CreateElement<IHtmlTimeElement>();
+                            timee.ClassName = "peer_time_sticky";
+                            timee.DateTime = currentDayGroup.ToString("yyyy-MM-dd");
+                            timee.TextContent = currentDayGroup.ToString("dd MMM yyyy", VkArchive.DateCulture);
+                            currentDayGroupElement.AppendChild(timee);
+                        }
+                        if (links.Length > 0)
+                        {
+                            var lnk = links.OfType<IHtmlAnchorElement>().First();
+                            var fromId = UrlToId(lnk.Href).Value;
+                            if (fromId != currentSender || DateOnly.FromDateTime(date) != currentDayGroup)
+                            {
+                                currentSender = fromId;
+                                if (currentMessageGroupElement is not null && currentMessageGroupElement.QuerySelector<IHtmlUnorderedListElement>("#messages").ChildElementCount > 0)
+                                    currentDayGroupElement.AppendChild(currentMessageGroupElement);
+                                currentMessageGroupElement = NewMessageGroup(currentSender, lnk.Href, lnk.TextContent, int.Parse(node.Id), date);
+                            }
+                        }
+                        else
+                        {
+                            if (Parent.CurrentUser["id"].AsInt != currentSender)
+                            {
+                                currentSender = Parent.CurrentUser["id"].AsInt;
+                                if (currentMessageGroupElement is not null && currentMessageGroupElement.QuerySelector<IHtmlUnorderedListElement>("#messages").ChildElementCount > 0)
+                                    currentDayGroupElement.AppendChild(currentMessageGroupElement);
+                                currentMessageGroupElement = NewMessageGroup(currentSender, "https://vk.com/id" + Parent.CurrentUser["id"].Value, Parent.CurrentUser["first_name"] + " " + Parent.CurrentUser["last_name"], int.Parse(node.Id), date);
+                            }
+                        }
+                        var attach = m.LastElementChild.GetElementsByClassName("kludges");
+                        if (attach.Length > 0)
+                        {
+                            var kludg = attach[0];
+                            var anchors = kludg.QuerySelectorAll<IHtmlAnchorElement>("a.im_srv_lnk");
+                            if (anchors.Any())
+                            {
+                                if (currentMessageGroupElement is not null && currentMessageGroupElement.QuerySelector<IHtmlUnorderedListElement>("#messages").ChildElementCount > 0)
+                                    currentDayGroupElement.AppendChild(currentMessageGroupElement);
+                                currentMessageGroupElement = null;
+                                var act = template.CreateElement<IHtmlDivElement>();
+                                act.ClassName = "action";
+                                act.Id = m.GetAttribute("data-id");
+                                var acta = template.CreateElement<IHtmlAnchorElement>();
+                                var acnhor1 = anchors.First();
+                                acta.Href = acnhor1.Href;
+                                act.SetAttribute("data-user_id", UrlToId(acnhor1.Href).ToString());
+                                acta.Target = "_root";
+                                var actab = template.CreateElement("strong");
+                                actab.TextContent = acnhor1.TextContent;
+                                actab.Id = "action_sender_title";
+                                anchors = anchors.Skip(1);
+                                acnhor1.Remove();
+                                acta.AppendChild(actab);
+                                var lastAnchor = anchors.LastOrDefault();
+                                if (lastAnchor is not null) lastAnchor.Remove();
+                                var b = kludg.QuerySelectorAll("b.im_srv_lnk");
+                                act.TextContent = kludg.TextContent;
+                                switch (kludg.TextContent)
+                                {
+                                    case string s when Regex.IsMatch(s, @"закрепила? сообщение"):
+                                        act.SetAttribute("data-action", "chat_pin_message");
+                                        goto member;
+                                    case string s when Regex.IsMatch(s, @"открепила? сообщение"):
+                                        act.SetAttribute("data-action", "chat_unpin_message");
+                                        goto member;
+                                    case string s when Regex.IsMatch(s, @"сделала? скриншот беседы"):
+                                        act.SetAttribute("data-action", "chat_screenshot");
+                                        goto member;
+                                    case string s when Regex.IsMatch(s, @"начала? групповой звонок"):
+                                        // NOTE: According to official API there is no such thing as chat_start_call action
+                                        // this is JUST A PLACEHOLDER to let the parser know what this attachment is...
+                                        // this attachment probably CANNOT be parsed into any of any VK library object
+                                        act.SetAttribute("data-action", "chat_start_call");
+                                        goto member;
+                                    case string s when Regex.IsMatch(s, @"выше?ла? из беседы"):
+                                    case string s2 when Regex.IsMatch(s2, @"исключила?"):
+                                        act.SetAttribute("data-action", "chat_kick_user");
+                                        goto member;
+                                    case string s when Regex.IsMatch(s, @"вернула?сь?я? в беседу"):
+                                    case string s2 when Regex.IsMatch(s2, @"пригласила?"):
+                                        act.SetAttribute("data-action", "chat_invite_user");
+                                    member: if (lastAnchor is not null)
+                                        {
+                                            var member = template.CreateElement<IHtmlAnchorElement>();
+                                            member.Href = lastAnchor.Href;
+                                            member.Id = "action_member";
+                                            member.SetAttribute("data-action-member", UrlToId(lastAnchor.Href).ToString());
+                                            var mb = template.CreateElement("strong");
+                                            mb.TextContent = lastAnchor.TextContent;
+                                            mb.Id = "action_member_title";
+                                            member.AppendChild(mb);
+                                            act.AppendChild(member);
+                                        }
+                                        break;
+                                    case string s when Regex.IsMatch(s, @"обновила? фотографию беседы"):
+                                        act.SetAttribute("data-action", "chat_photo_update");
+                                        break;
+                                    case string s when Regex.IsMatch(s, @"удалила? фотографию беседы"):
+                                        act.SetAttribute("data-action", "chat_photo_remove");
+                                        break;
+                                    case string s when Regex.IsMatch(s, @"присоединила?сь?я? к беседе по ссылке"):
+                                        act.SetAttribute("data-action", "chat_invite_user_by_link");
+                                        break;
+                                    case string s when Regex.IsMatch(s, @"создала? беседу"):
+                                        act.SetAttribute("data-action", "chat_create");
+                                        goto text;
+                                    case string s when Regex.IsMatch(s, @"изменила? название беседы"):
+                                        act.SetAttribute("data-action", "chat_title_update");
+                                    text: act.InnerHtml = Regex.Replace(kludg.TextContent, "«([^«»]*)»", "«<strong id=\"action_text\">$1</strong>»");
+                                        break;
+                                    case string s when Regex.IsMatch(s, @"изменила? оформление чата на"):
+                                        act.InnerHtml = Regex.Replace(kludg.TextContent, "«([^«»]*)»", "«<strong id=\"action_style\" data-action-style=\"" + styles[Regex.Match(kludg.TextContent, "«(.*)»").Groups[1].Value] + "\">$1</strong>»");
+                                        goto style; // Wish there was fallthroughs in C#
+                                    case string s when Regex.IsMatch(s, @"сбросила? оформление чата\."):
+                                    style: act.SetAttribute("data-action", "conversation_style_update");
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                act.Prepend(acta);
+                                currentDayGroupElement.AppendChild(act);
+                                goto skipattachments;
+                            }
+                            var atts = kludg.QuerySelectorAll<IHtmlDivElement>(".attachment");
+                            //Attachment object are incomplete, archive does not provide enough data to build full attahment objects
+                            // TODO: HTML Attachments
+                            foreach (var att in atts)
+                            {
+                                var desc = att.QuerySelector<IHtmlDivElement>(".attachment__description");
+                                Match match;
+                                if ((match = Regex.Match(desc.TextContent, @"(\d+) прикреплённ[оеых]+ сообщени[еяй]")).Success)
+                                {
+                                    continue;
+                                }
+                                switch (desc.TextContent)
+                                {
+                                    case var s when s.Contains("Фотография"):
+                                        break;
+                                    case var s when s.Contains("Стикер"):
+                                        break;
+                                    case var s when s.Contains("Запись на стене"):
+                                        break;
+                                    case var s when s.Contains("Подарок"):
+                                        break;
+                                    case var s when s.Contains("Аудиозапись"):
+                                        break;
+                                    case var s when s.Contains("Опрос"):
+                                        break;
+                                    case var s when s.Contains("История"):
+                                        break;
+                                    case var s when s.Contains("Товар"):
+                                        break;
+                                    case var s when s.Contains("Комментарий на стене"):
+                                        break;
+                                    case var s when s.Contains("Ссылка"):
+                                        break;
+                                    case var s when s.Contains("Видеозапись"):
+                                        break;
+                                    case var s when s.Contains("Сообщение удалено"):
+                                        node.SetAttribute("data-deleted", "true");
+                                        node.InnerHtml = "<span style=\"color: red\">Сообщение удалено</span>";
+                                        break;
+                                    case var s when s.Contains("Карта"):
+                                        break;
+                                    case var s when s.Contains("Файл"):
+                                        break;
+                                    case var s when s.Contains("Статья"):
+                                        break;
+                                    case var s when s.Contains("Сюжет"):
+                                        break;
+                                    case var s when s.Contains("Виджет"):
+                                        break;
+                                    case var s when s.Contains("Плейлист"):
+                                        break;
+                                    case var s when s.Contains("Запрос на денежный перевод"):
+                                        break;
+                                    case var s when s.Contains("Группа"):
+                                        break;
+                                    case var s when s.Contains("Звонок"):
+                                        break;
+                                    case var s when s.Contains("Подкаст"):
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+                            skipattachments: kludg.Remove();
+                        }
+                        var text2 = template.CreateElement<IHtmlSpanElement>();
+                        var cont = WebUtility.HtmlDecode(m.LastElementChild.InnerHtml);
+                        cont = Regex.Replace(cont, @"((https:\/\/)|(http:\/\/))([-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b[-a-zA-Z0-9@:%_\+.~#?&//=]*)", @"<a id=""im_mention"" href=""$1$4"" target=""_root"">$0</a>");
+                        cont = Regex.Replace(cont, @"\[([^|\]\[]+)\|([^\]]+)\]", @"<a href=""https://vk.com/$1"" target=""_root"">$2</a>");
+                        text2.InnerHtml = cont;
+                        text2.Id = "im_message_text";
+                        node.Prepend(text2);
+                        currentMessageGroupElement?.QuerySelector<IHtmlUnorderedListElement>("#messages").AppendChild(node);
+                    }
+                    if (!merged)
+                    {
+                        if(currentMessageGroupElement is not null) currentDayGroupElement.AppendChild(currentMessageGroupElement);
+                        template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                    }
+                    index++;
+                    ConvertProgress?.Report((Count, ++count, Path.Combine(p.Key+"", f)));
+                    if (!merged) File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, p.Key+"", f), template.ToHtml());
+                }
+                if (merged)
+                {
+                    if (currentMessageGroupElement is not null) currentDayGroupElement.AppendChild(currentMessageGroupElement);
+                    template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                    File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, p.Key + "", "merged.html"), template.ToHtml());
+                }
+            }
+            File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, "index-messages.html"), templatePeerList.ToHtml());
+            File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, "messages.css"), Properties.Resources.style_messages);
+            File.WriteAllBytes(Path.Combine(Parent.ParsedPath, "messages.svg"), Properties.Resources.category_messages);
+
+            IHtmlDivElement NewMessageGroup(int sender, string senderHref, string senderTitle, int messageId, DateTime date)
+            {
+                var m = Properties.Resources.template_messages_message_group.StringHtml().QuerySelector<IHtmlDivElement>(".im_message_group");
+                m.SetAttribute("data-user_id", sender + "");
+                var ic_a = m.QuerySelector<IHtmlAnchorElement>("#im_user_icon");
+                ic_a.Target = "_root";
+                ic_a.Href = senderHref;
+                ic_a.QuerySelector<IHtmlDivElement>("div").SetAttribute("style", "--user-id1: " + sender + ";");
+                var mt = m.QuerySelector<IHtmlAnchorElement>("#message_title");
+                mt.Target = "_root";
+                mt.Href = senderHref;
+                m.QuerySelector("#user_name").TextContent = senderTitle;
+                m.QuerySelector<IHtmlAnchorElement>("#message_time").Href = "#" + messageId;
+                var d = m.QuerySelector<IHtmlTimeElement>("time");
+                d.DateTime = date.ToString("yyyy-MM-dd HH:mm:ss");
+                d.TextContent = date.ToString("HH:ss");
+                return m;
+            }
         }
 
         //Output reference: https://dev.vk.com/method/messages.getHistory and https://dev.vk.com/reference/objects/message
         public override void ConvertToJSON(bool merged = false)
         {
             var count = 0;
-            var currentUser = GetCurrentUser();
             foreach(var d in DirectoryUtils.GetDirectories(InputPath))
             {
                 var peerId = int.Parse(d);
-                string outputPath = Path.Combine(Parent.ParsedPath, "messages", peerId+"");
+                string outputPath = Path.Combine(Parent.ParsedPath, Folder, peerId+"");
                 Directory.CreateDirectory(outputPath);
                 JSONObject result = new();
                 JSONObject response = new();
@@ -322,7 +700,7 @@ namespace VkArchiveParser.Messages
                         groups = new();
                         conversations = new();
                     }
-                    var doc = Path.Combine(InputPath, d, f).ParseHtml();
+                    var doc = Path.Combine(InputPath, d, f).PathHtml();
                     var messages = doc.GetElementsByClassName("message").OrderBy(x => int.Parse(x.GetAttribute("data-id")));
                     if (!conversations.ContainsKey(peerId))
                     {
@@ -383,7 +761,7 @@ namespace VkArchiveParser.Messages
                         if (links.Length > 0)
                         {
                             var lnk = links.OfType<IHtmlAnchorElement>().First();
-                            var fromId = UrlToId(lnk.Href);
+                            var fromId = UrlToId(lnk.Href).Value;
                             node["from_id"] = fromId;
                             node["out"] = 0;
                             if(fromId > 0)
@@ -426,21 +804,18 @@ namespace VkArchiveParser.Messages
                         }
                         else
                         {
-                            node["from_id"] = currentUser["id"];
+                            node["from_id"] = Parent.CurrentUser["id"];
                             node["out"] = 1;
-                            if (!profiles.ContainsKey(currentUser["id"]))
-                                profiles.Add(currentUser["id"], currentUser);
+                            if (!profiles.ContainsKey(Parent.CurrentUser["id"]))
+                                profiles.Add(Parent.CurrentUser["id"], Parent.CurrentUser);
                         }
                         var edited = header.GetElementsByClassName("message-edited");
-                        var dateCulture = CultureInfo.CreateSpecificCulture("ru-RU");
-                        //Archive month format differs from builtin version
-                        dateCulture.DateTimeFormat.AbbreviatedMonthGenitiveNames = dateCulture.DateTimeFormat.AbbreviatedMonthNames = new string[] { "Янв", "Фев", "Мар", "Апр", "Мая", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "" };
                         if (edited.Length > 0)
                         {
-                            node["update_time"] = ((DateTimeOffset)DateTime.ParseExact(edited.OfType<IHtmlSpanElement>().First().Title.Trim(), "d MMM yyyy в H:mm:ss", dateCulture)).ToUnixTimeSeconds();
+                            node["update_time"] = ((DateTimeOffset)DateTime.ParseExact(edited.OfType<IHtmlSpanElement>().First().Title.Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture)).ToUnixTimeSeconds();
                             edited[0].Remove();
                         }
-                        node["date"] = ((DateTimeOffset)DateTime.ParseExact(header.TextContent[(header.TextContent.LastIndexOf(",")+1)..].Trim(), "d MMM yyyy в H:mm:ss", dateCulture)).ToUnixTimeSeconds();
+                        node["date"] = ((DateTimeOffset)DateTime.ParseExact(header.TextContent[(header.TextContent.LastIndexOf(",")+1)..].Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture)).ToUnixTimeSeconds();
                         var attach = m.LastElementChild.GetElementsByClassName("kludges");
                         if (attach.Length > 0)
                         {
@@ -634,7 +1009,7 @@ namespace VkArchiveParser.Messages
                                         attachment[aKey: attachment["type"] = "call"] = new JSONObject
                                         {
                                             ["initiator_id"] = node["from_id"],
-                                            ["receiver_id"] = peerId > 2000000000 ? peerId : ((int)node["from_id"] == (int)currentUser["id"] ? (int)node["from_id"] : (int)currentUser["id"]),
+                                            ["receiver_id"] = peerId > 2000000000 ? peerId : (node["from_id"].AsInt == Parent.CurrentUser["id"].AsInt ? node["from_id"].AsInt : Parent.CurrentUser["id"].AsInt),
                                             ["time"] = node["date"]
                                         };
                                         break;

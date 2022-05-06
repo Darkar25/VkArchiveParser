@@ -1,4 +1,6 @@
-﻿using System.IO.Compression;
+﻿using EasyJSON;
+using System.Globalization;
+using System.IO.Compression;
 using VkArchiveParser.Categories;
 using VkArchiveParser.Zip;
 
@@ -10,6 +12,20 @@ namespace VkArchiveParser
         public string OriginalPath { get; set; }
         public string ParsedPath { get; set; } = Path.Combine(Environment.ProcessPath, "parsed_archive");
         public static IProgress<(int total, int processed, string currentItem)>? UnzipProgress;
+        static CultureInfo _ci;
+        public static CultureInfo DateCulture {
+            get {
+                if (_ci is null)
+                {
+                    var dateCulture = CultureInfo.CreateSpecificCulture("ru-RU");
+                    //Archive month format differs from builtin version
+                    dateCulture.DateTimeFormat.AbbreviatedMonthGenitiveNames = dateCulture.DateTimeFormat.AbbreviatedMonthNames = new string[] { "Янв", "Фев", "Мар", "Апр", "Мая", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "" };
+                    _ci = dateCulture;
+                }
+                return _ci;
+            }
+        }
+        public JSONObject CurrentUser { get; set; } = new();
         public List<ICategory> Categories = new();
         public VkArchive(string path)
         {
@@ -24,7 +40,11 @@ namespace VkArchiveParser
                 MyZipFileExtensions.ExtractToDirectory(archive, OriginalPath, UnzipProgress, true);
             }
             foreach (var f in Directory.EnumerateDirectories(OriginalPath))
-                Categories.Add(CategoryProviderManager.Probe(f, this));
+            {
+                var category = CategoryProviderManager.Probe(f, this);
+                category.PopulateCurrentUserInfo();
+                Categories.Add(category);
+            }
         }
     }
 }

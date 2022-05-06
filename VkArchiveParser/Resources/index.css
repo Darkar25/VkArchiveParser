@@ -1,0 +1,88 @@
+@property --floor {
+	syntax: '<integer>';
+	initial-value: 0;
+	inherits: false
+}
+@property --floor2 {
+	syntax: '<integer>';
+	initial-value: 0;
+	inherits: false
+}
+@property --floor3 {
+	syntax: '<integer>';
+	initial-value: 0;
+	inherits: false
+}
+@property --floor4 {
+	syntax: '<integer>';
+	initial-value: 0;
+	inherits: false
+}
+
+body, html {
+	height: 100%
+}
+body {
+	margin: 0;
+	display: grid;
+    grid-template-rows: auto 1fr;
+}
+header {
+	border-bottom: solid 1px lightgray;
+    padding: 0.5em;
+    margin-bottom: 1em;
+    display: flex;
+    align-items: center;
+}
+ul {
+	list-style: none;
+	padding: 0;
+}
+.width {
+	width: 960px;
+    margin: 0 auto;
+}
+.headerwrapper {
+	padding: 0;
+    display: flex;
+    align-items: center;
+}
+nav {
+	margin: 0 1em 0 0;
+}
+nav>* {
+	display: flex;
+	align-items: center;
+}
+nav img {
+	margin-right: 0.5em;
+}
+a {
+	color: black;
+	text-decoration: none;
+	padding: 0.4em;
+}
+a:hover {
+	background-color: #00000033;
+}
+main {
+	display: grid;
+    grid-template-columns: auto 1fr;
+    padding: 0 1em 0;
+    height: 100%;
+}
+iframe {
+	border: solid lightgray;
+    border-width: 1px 1px 0;
+    height: calc(100% - 1px);
+	border-radius: 0.25em;
+}
+.rowspan2 {
+	grid-row: span 2;
+}
+.colspan2 {
+	grid-column: span 2;
+}
+time {
+    align-self: center;
+}
