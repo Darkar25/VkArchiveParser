@@ -685,11 +685,9 @@ namespace VkArchiveParser.Messages
                                             }
                                             else if (link.Href.Contains("/amsg/"))
                                             {
-                                                var amsg = template.CreateElement<IHtmlAnchorElement>();
-                                                amsg.Target = "_root";
-                                                amsg.Href = link.Href;
-                                                amsg.ClassName = "attach_icon audio";
-                                                amsg.TextContent = "Голосовое сообщение (TEMPORARY PLACEHOLDER)";
+                                                var amsg = template.CreateElement<IHtmlAudioElement>();
+                                                amsg.Source = link.Href;
+                                                amsg.IsShowingControls = true;
                                                 amsg.SetAttribute("data-owder_id", fdata.Groups[1].Value);
                                                 amsg.SetAttribute("data-id", fdata.Groups[2].Value);
                                                 attachments.AppendChild(amsg);
@@ -774,10 +772,10 @@ namespace VkArchiveParser.Messages
                     {
                         if(currentMessageGroupElement is not null) currentDayGroupElement.AppendChild(currentMessageGroupElement);
                         template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                        File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, p.Key + "", f), template.ToHtml());
                     }
                     index++;
                     ConvertProgress?.Report((Count, ++count, Path.Combine(p.Key+"", f)));
-                    if (!merged) File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, p.Key+"", f), template.ToHtml());
                 }
                 if (merged)
                 {
@@ -789,6 +787,7 @@ namespace VkArchiveParser.Messages
             File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, "index-messages.html"), templatePeerList.ToHtml());
             File.WriteAllText(Path.Combine(Parent.ParsedPath, Folder, "messages.css"), Properties.Resources.style_messages);
             File.WriteAllBytes(Path.Combine(Parent.ParsedPath, "messages.svg"), Properties.Resources.category_messages);
+            File.WriteAllBytes(Path.Combine(Parent.ParsedPath, "generic_attachment.svg"), Properties.Resources.misc_generic_attachment);
 
             IHtmlDivElement NewMessageGroup(int sender, string senderHref, string senderTitle, int messageId, DateTime date)
             {

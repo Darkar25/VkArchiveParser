@@ -71,6 +71,16 @@ namespace VkArchiveParser.Messages.Properties {
         }
         
         /// <summary>
+        ///   Поиск локализованного ресурса типа System.Byte[].
+        /// </summary>
+        internal static byte[] misc_generic_attachment {
+            get {
+                object obj = ResourceManager.GetObject("misc:generic_attachment", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
         ///   Ищет локализованную строку, похожую на body {
         ///	display: revert;
         ///    height: revert;
