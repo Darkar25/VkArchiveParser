@@ -435,7 +435,12 @@ namespace VkArchiveParser.Messages
                         {
                             currentDayGroup = DateOnly.FromDateTime(date);
                             if (currentDayGroupElement is not null)
+                            {
+                                if (currentMessageGroupElement is not null)
+                                    currentDayGroupElement.AppendChild(currentMessageGroupElement);
                                 template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                            }
+                            
                             currentDayGroupElement = template.CreateElement<IHtmlDivElement>();
                             currentDayGroupElement.ClassName = "im_day_group";
                             var timee = template.CreateElement<IHtmlTimeElement>();
@@ -561,68 +566,199 @@ namespace VkArchiveParser.Messages
                                 goto skipattachments;
                             }
                             var atts = kludg.QuerySelectorAll<IHtmlDivElement>(".attachment");
+                            var attachments = template.CreateElement<IHtmlDivElement>();
+                            attachments.ClassName = "attachments";
                             //Attachment object are incomplete, archive does not provide enough data to build full attahment objects
                             // TODO: HTML Attachments
                             foreach (var att in atts)
                             {
                                 var desc = att.QuerySelector<IHtmlDivElement>(".attachment__description");
                                 Match match;
-                                if ((match = Regex.Match(desc.TextContent, @"(\d+) прикреплённ[оеых]+ сообщени[еяй]")).Success)
-                                {
-                                    continue;
+                                if ((match = Regex.Match(desc.TextContent, @"(\d+) прикреплённ[оеых]+ сообщени[еяй]")).Success) {
+                                    var forwarded = template.CreateElement("strong");
+                                    forwarded.ClassName = "forwarded";
+                                    forwarded.TextContent = match.Groups[1].Value + " Прикреплённых сообщений";
+                                    attachments.AppendChild(forwarded);
                                 }
                                 switch (desc.TextContent)
                                 {
                                     case var s when s.Contains("Фотография"):
+                                        var src = att.QuerySelector<IHtmlAnchorElement>("a").Href;
+                                        var photo = template.CreateElement<IHtmlAnchorElement>();
+                                        photo.Target = "_root";
+                                        photo.ClassName = "attach_img";
+                                        photo.Href = src;
+                                        var image = template.CreateElement<IHtmlImageElement>();
+                                        image.Source = src;
+                                        photo.AppendChild(image);
+                                        attachments.AppendChild(photo);
                                         break;
                                     case var s when s.Contains("Стикер"):
+                                        var sticker = template.CreateElement<IHtmlDivElement>();
+                                        sticker.ClassName = "attach_icon generic";
+                                        sticker.TextContent = "Стикер";
+                                        attachments.AppendChild(sticker);
                                         break;
                                     case var s when s.Contains("Запись на стене"):
+                                        var wall = template.CreateElement<IHtmlDivElement>();
+                                        wall.ClassName = "attach_icon generic";
+                                        wall.TextContent = "Запись на стене";
+                                        attachments.AppendChild(wall);
                                         break;
                                     case var s when s.Contains("Подарок"):
+                                        var gift = template.CreateElement<IHtmlDivElement>();
+                                        gift.ClassName = "attach_icon generic";
+                                        gift.TextContent = "Подарок";
+                                        attachments.AppendChild(gift);
                                         break;
                                     case var s when s.Contains("Аудиозапись"):
+                                        var audio = template.CreateElement<IHtmlDivElement>();
+                                        audio.ClassName = "attach_icon audio";
+                                        audio.TextContent = "Аудиозапись";
+                                        attachments.AppendChild(audio);
                                         break;
                                     case var s when s.Contains("Опрос"):
+                                        var poll = template.CreateElement<IHtmlDivElement>();
+                                        poll.ClassName = "attach_icon generic";
+                                        poll.TextContent = "Опрос";
+                                        attachments.AppendChild(poll);
                                         break;
                                     case var s when s.Contains("История"):
+                                        var story = template.CreateElement<IHtmlDivElement>();
+                                        story.ClassName = "attach_icon video";
+                                        story.TextContent = "История";
+                                        attachments.AppendChild(story);
                                         break;
                                     case var s when s.Contains("Товар"):
+                                        var item = template.CreateElement<IHtmlDivElement>();
+                                        item.ClassName = "attach_icon generic";
+                                        item.TextContent = "Товар";
+                                        attachments.AppendChild(item);
                                         break;
                                     case var s when s.Contains("Комментарий на стене"):
+                                        var comment = template.CreateElement<IHtmlDivElement>();
+                                        comment.ClassName = "attach_icon generic";
+                                        comment.TextContent = "Комментарий на стене";
+                                        attachments.AppendChild(comment);
                                         break;
                                     case var s when s.Contains("Ссылка"):
+                                        var url = template.CreateElement<IHtmlAnchorElement>();
+                                        url.Href = att.QuerySelector<IHtmlAnchorElement>("a").Href;
+                                        url.Target = "_root";
+                                        url.ClassName = "attach_icon generic";
+                                        url.TextContent = "Ссылка";
+                                        attachments.AppendChild(url);
                                         break;
                                     case var s when s.Contains("Видеозапись"):
+                                        var video = template.CreateElement<IHtmlAnchorElement>();
+                                        video.Target = "_root";
+                                        video.ClassName = "attach_icon video";
+                                        video.TextContent = "Видеозапись";
+                                        video.Href = att.QuerySelector<IHtmlAnchorElement>("a").Href;
+                                        attachments.AppendChild(video);
                                         break;
                                     case var s when s.Contains("Сообщение удалено"):
                                         node.SetAttribute("data-deleted", "true");
                                         node.InnerHtml = "<span style=\"color: red\">Сообщение удалено</span>";
                                         break;
                                     case var s when s.Contains("Карта"):
+                                        var map = template.CreateElement<IHtmlDivElement>();
+                                        map.ClassName = "attach_icon generic";
+                                        map.TextContent = "Карта";
+                                        attachments.AppendChild(map);
                                         break;
                                     case var s when s.Contains("Файл"):
+                                        var link = att.QuerySelector<IHtmlAnchorElement>("a");
+                                        if (link is not null)
+                                        {
+                                            Match fdata = Regex.Match(link.Text, @"https?://vk.com/doc(-?\d*)_(\d*)");
+                                            if (link.Text.Contains(link.Href))
+                                            {
+                                                var file = template.CreateElement<IHtmlAnchorElement>();
+                                                file.Target = "_root";
+                                                file.Href = link.Href;
+                                                file.ClassName = "attach_icon doc";
+                                                file.TextContent = "Файл";
+                                                file.SetAttribute("data-owder_id", fdata.Groups[1].Value);
+                                                file.SetAttribute("data-id", fdata.Groups[2].Value);
+                                                attachments.AppendChild(file);
+                                            }
+                                            else if (link.Href.Contains("/amsg/"))
+                                            {
+                                                var amsg = template.CreateElement<IHtmlAnchorElement>();
+                                                amsg.Target = "_root";
+                                                amsg.Href = link.Href;
+                                                amsg.ClassName = "attach_icon audio";
+                                                amsg.TextContent = "Голосовое сообщение (TEMPORARY PLACEHOLDER)";
+                                                amsg.SetAttribute("data-owder_id", fdata.Groups[1].Value);
+                                                amsg.SetAttribute("data-id", fdata.Groups[2].Value);
+                                                attachments.AppendChild(amsg);
+                                            }
+                                        }
                                         break;
                                     case var s when s.Contains("Статья"):
+                                        var book = template.CreateElement<IHtmlDivElement>();
+                                        book.ClassName = "attach_icon book";
+                                        book.TextContent = "Статья";
+                                        attachments.AppendChild(book);
                                         break;
                                     case var s when s.Contains("Сюжет"):
+                                        var lnk = template.CreateElement<IHtmlDivElement>();
+                                        lnk.ClassName = "attach_icon video";
+                                        lnk.TextContent = "Сюжет";
+                                        attachments.AppendChild(lnk);
                                         break;
                                     case var s when s.Contains("Виджет"):
+                                        var widget = template.CreateElement<IHtmlDivElement>();
+                                        widget.ClassName = "attach_icon generic";
+                                        widget.TextContent = "Виджет";
+                                        attachments.AppendChild(widget);
                                         break;
                                     case var s when s.Contains("Плейлист"):
+                                        var playlist = template.CreateElement<IHtmlDivElement>();
+                                        playlist.ClassName = "attach_icon generic";
+                                        playlist.TextContent = "Плейлист";
+                                        attachments.AppendChild(playlist);
                                         break;
                                     case var s when s.Contains("Запрос на денежный перевод"):
+                                        var money = template.CreateElement<IHtmlDivElement>();
+                                        money.ClassName = "attach_icon generic";
+                                        money.TextContent = "Запрос на денежный перевод";
+                                        attachments.AppendChild(money);
                                         break;
                                     case var s when s.Contains("Группа"):
+                                        var group = template.CreateElement<IHtmlDivElement>();
+                                        group.ClassName = "attach_icon generic";
+                                        group.TextContent = "Группа";
+                                        attachments.AppendChild(group);
                                         break;
                                     case var s when s.Contains("Звонок"):
+                                        var call = template.CreateElement<IHtmlDivElement>();
+                                        call.ClassName = "attach_icon generic";
+                                        call.TextContent = "Звонок";
+                                        attachments.AppendChild(call);
                                         break;
                                     case var s when s.Contains("Подкаст"):
+                                        var link1 = att.QuerySelector<IHtmlAnchorElement>("a");
+                                        if (link1 is not null)
+                                        {
+                                            var podcast = template.CreateElement<IHtmlAnchorElement>();
+                                            Match fdata = Regex.Match(link1.Text, @"https?://vk.com/podcast(-?\d*)_(\d*)");
+                                            podcast.Target = "_root";
+                                            podcast.ClassName = "attach_icon audio";
+                                            podcast.Href = link1.Text;
+                                            podcast.TextContent = "Подкаст";
+                                            podcast.SetAttribute("data-owder_id", fdata.Groups[1].Value);
+                                            podcast.SetAttribute("data-id", fdata.Groups[2].Value);
+                                            attachments.AppendChild(podcast);
+                                        }
                                         break;
                                     default:
                                         break;
                                 }
                             }
+                            if (attachments.ChildElementCount > 0)
+                                node.AppendChild(attachments);
                             skipattachments: kludg.Remove();
                         }
                         var text2 = template.CreateElement<IHtmlSpanElement>();

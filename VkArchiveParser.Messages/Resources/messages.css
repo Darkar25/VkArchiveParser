@@ -88,7 +88,7 @@ main {
 	margin: 0 0.5em;
 }
 #messages>li {
-	margin-bottom: .5em;
+	padding-bottom: 1em;
 	overflow-wrap: break-word;
 }
 #messages time {
@@ -99,12 +99,75 @@ main {
 	position: sticky;
     top: 4em;
 }
-#im_message_text a {
+#messages li a {
 	color: steelblue;
     padding: 0;
 }
 #message_time {
 	width: fit-content;
+}
+.forwarded {
+	display: block;
+    border-left: solid 2px gray;
+    padding-left: 0.5em;
+}
+.forwarded:hover {
+	border-color: darkgray;
+}
+.attachments {
+	display: flex;
+    flex-wrap: wrap;
+    max-width: 75%;
+}
+.attach_img {
+	height: 10em;
+    flex: 1 12%;
+    margin: 0.1em;
+}
+.attach_img>img {
+	height: inherit;
+    object-fit: cover;
+    width: -webkit-fill-available;
+	max-width: 100%;
+}
+.attach_icon {
+	display: flex;
+    align-items: center;
+	width: 100%;
+	margin: 0.1em 0;
+}
+.attach_icon:before {
+	content: ' ';
+	background: url(https://st3-9.vk.com/images/icons/doc_icons.png) no-repeat;
+	border-radius: 3px;
+	width: 30px;
+    aspect-ratio: 1;
+    margin-right: 0.5em;
+}
+.attach_icon.doc:before {
+	background-position: left -180px;
+}
+.attach_icon.book:before {
+	background-position: left -150px;
+}
+.attach_icon.video:before {
+	background-position: left -120px;
+}
+.attach_icon.audio:before {
+	background-position: left -90px;
+}
+.attach_icon.photo:before {
+	background-position: left -60px;
+}
+.attach_icon.archive:before {
+	background-position: left -30px;
+}
+.attach_icon.text:before {
+	background-position: left 0px;
+}
+.attach_icon.generic:before {
+	background: url(../generic_attachment.svg);
+    background-size: 30px;
 }
 .action {
 	text-align: center;
