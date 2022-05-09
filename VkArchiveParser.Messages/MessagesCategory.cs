@@ -431,24 +431,6 @@ namespace VkArchiveParser.Messages
                         }
                         var date = DateTime.ParseExact(header.TextContent[(header.TextContent.LastIndexOf(",") + 1)..].Trim(), "d MMM yyyy в H:mm:ss", VkArchive.DateCulture);
                         var links = header.GetElementsByTagName("a");
-                        if (DateOnly.FromDateTime(date) != currentDayGroup)
-                        {
-                            currentDayGroup = DateOnly.FromDateTime(date);
-                            if (currentDayGroupElement is not null)
-                            {
-                                if (currentMessageGroupElement is not null)
-                                    currentDayGroupElement.AppendChild(currentMessageGroupElement);
-                                template.QuerySelector("main").AppendChild(currentDayGroupElement);
-                            }
-                            
-                            currentDayGroupElement = template.CreateElement<IHtmlDivElement>();
-                            currentDayGroupElement.ClassName = "im_day_group";
-                            var timee = template.CreateElement<IHtmlTimeElement>();
-                            timee.ClassName = "peer_time_sticky";
-                            timee.DateTime = currentDayGroup.ToString("yyyy-MM-dd");
-                            timee.TextContent = currentDayGroup.ToString("dd MMM yyyy", VkArchive.DateCulture);
-                            currentDayGroupElement.AppendChild(timee);
-                        }
                         if (links.Length > 0)
                         {
                             var lnk = links.OfType<IHtmlAnchorElement>().First();
@@ -463,13 +445,26 @@ namespace VkArchiveParser.Messages
                         }
                         else
                         {
-                            if (Parent.CurrentUser["id"].AsInt != currentSender)
+                            if (Parent.CurrentUser["id"].AsInt != currentSender || DateOnly.FromDateTime(date) != currentDayGroup)
                             {
                                 currentSender = Parent.CurrentUser["id"].AsInt;
                                 if (currentMessageGroupElement is not null && currentMessageGroupElement.QuerySelector<IHtmlUnorderedListElement>("#messages").ChildElementCount > 0)
                                     currentDayGroupElement.AppendChild(currentMessageGroupElement);
                                 currentMessageGroupElement = NewMessageGroup(currentSender, "https://vk.com/id" + Parent.CurrentUser["id"].Value, Parent.CurrentUser["first_name"] + " " + Parent.CurrentUser["last_name"], int.Parse(node.Id), date);
                             }
+                        }
+                        if (DateOnly.FromDateTime(date) != currentDayGroup)
+                        {
+                            currentDayGroup = DateOnly.FromDateTime(date);
+                            if (currentDayGroupElement is not null)
+                                template.QuerySelector("main").AppendChild(currentDayGroupElement);
+                            currentDayGroupElement = template.CreateElement<IHtmlDivElement>();
+                            currentDayGroupElement.ClassName = "im_day_group";
+                            var timee = template.CreateElement<IHtmlTimeElement>();
+                            timee.ClassName = "peer_time_sticky";
+                            timee.DateTime = currentDayGroup.ToString("yyyy-MM-dd");
+                            timee.TextContent = currentDayGroup.ToString("dd MMM yyyy", VkArchive.DateCulture);
+                            currentDayGroupElement.AppendChild(timee);
                         }
                         var attach = m.LastElementChild.GetElementsByClassName("kludges");
                         if (attach.Length > 0)
